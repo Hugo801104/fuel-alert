@@ -37,3 +37,23 @@ def test_build_message_keeps_single_result_title() -> None:
     title, _ = build_message(_result("1", 1.50))
 
     assert title == "⛽ Gazole à 1.500 €/L - Station 1"
+
+
+def test_build_message_compacts_api_hours_and_respects_discord_limit() -> None:
+    result = _result("1", 1.50)
+    result.horaires = {
+        "@automate-24-24": "0",
+        "jour": [
+            {
+                "@nom": "Lundi",
+                "@ferme": "",
+                "horaire": {"@ouverture": "06.00", "@fermeture": "22.00"},
+            }
+        ],
+    }
+
+    _, body = build_message([result, result, result])
+
+    assert "Lun: 06:00-22:00" in body
+    assert '"@automate-24-24"' not in body
+    assert len(body) <= 2000

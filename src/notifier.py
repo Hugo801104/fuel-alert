@@ -8,7 +8,7 @@ de configuration (ex: ``tgram://token/chat_id``, ``discord://webhook_id/webhook_
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import apprise
 
@@ -16,9 +16,47 @@ from src.analyzer import StationResult, parse_update_date
 
 logger = logging.getLogger(__name__)
 
+MAX_DISCORD_BODY_LENGTH = 2000
+
 
 class NotificationError(Exception):
     """Levée quand l'envoi de la notification échoue sur tous les canaux."""
+
+
+def _format_hours(hours: Any) -> Optional[str]:
+    """Réduit les horaires JSON de l'API à une ligne lisible."""
+    if not hours:
+        return None
+    if isinstance(hours, str):
+        return hours[:160]
+    if not isinstance(hours, dict):
+        return str(hours)[:160]
+
+    if str(hours.get("@automate-24-24", hours.get("automate-24-24", ""))) == "1":
+        return "24h/24"
+
+    day_entries = hours.get("jour", [])
+    if not isinstance(day_entries, list):
+        return None
+
+    summaries = []
+    for day in day_entries:
+        if not isinstance(day, dict):
+            continue
+        name = str(day.get("@nom", day.get("nom", "")))[:3]
+        if not name:
+            continue
+        if str(day.get("@ferme", day.get("ferme", ""))) == "1":
+            summaries.append(f"{name}: fermé")
+            continue
+        schedule = day.get("horaire", {})
+        if isinstance(schedule, dict):
+            opening = schedule.get("@ouverture", schedule.get("ouverture"))
+            closing = schedule.get("@fermeture", schedule.get("fermeture"))
+            if opening and closing:
+                summaries.append(f"{name}: {str(opening).replace('.', ':')}-{str(closing).replace('.', ':')}")
+
+    return ", ".join(summaries)[:240] or None
 
 
 def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str, str]:
@@ -55,12 +93,17 @@ def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str
                 f"&mlon={result.longitude}#map=17/{result.latitude}/{result.longitude})",
             ]
         )
-        if result.horaires:
-            body_lines.append(f"**🕑 Horaires :** {result.horaires}")
+        formatted_hours = _format_hours(result.horaires)
+        if formatted_hours:
+            body_lines.append(f"**🕑 Horaires :** {formatted_hours}")
         if index < len(result_list):
             body_lines.append("---")
 
-    return title, "\n\n".join(body_lines)
+    body = "\n\n".join(body_lines)
+    if len(body) > MAX_DISCORD_BODY_LENGTH:
+        logger.warning("Message de notification tronqué à %d caractères.", MAX_DISCORD_BODY_LENGTH)
+        body = body[: MAX_DISCORD_BODY_LENGTH - 20].rstrip() + "\n\n[...]"
+    return title, body
 
 
 def send_notification(
