@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 
@@ -40,6 +41,15 @@ from src.analyzer import (
 from src.fetcher import FuelAPIError, fetch_stations
 from src.notifier import NotificationError, send_notification
 from src.security import validate_coordinates, validate_radius
+from src.subscriptions import (
+    SubscriptionError,
+    get_supabase_client,
+    list_due_subscriptions,
+    log_notification,
+    notification_was_sent_today,
+    record_notification,
+    telegram_notification_url,
+)
 
 logger = logging.getLogger("fuel_alert")
 
@@ -169,6 +179,78 @@ def run(config: dict[str, object]) -> int:
     return 0
 
 
+def run_subscriptions() -> int:
+    """Traite tous les abonnements Supabase arrivés à échéance."""
+    try:
+        client = get_supabase_client()
+    except SubscriptionError as exc:
+        logger.error("Configuration Supabase invalide: %s", exc)
+        return 1
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not bot_token:
+        logger.error("La variable TELEGRAM_BOT_TOKEN est obligatoire.")
+        return 1
+
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    try:
+        subscriptions = list_due_subscriptions(client, now)
+    except Exception:  # noqa: BLE001 - les erreurs du client Supabase sont externes
+        logger.exception("Impossible de charger les abonnements Supabase.")
+        return 1
+
+    logger.info("%d abonnement(s) à traiter.", len(subscriptions))
+    failed = False
+    for subscription in subscriptions:
+        subscription_id = str(subscription["id"])
+        if notification_was_sent_today(client, subscription_id, today):
+            logger.info("Notification déjà envoyée aujourd'hui pour %s.", subscription_id)
+            continue
+
+        try:
+            stations = fetch_stations(
+                latitude=subscription["latitude"],
+                longitude=subscription["longitude"],
+                radius_km=subscription["radius_km"],
+            )
+            results = rank_stations(
+                stations,
+                center_lat=subscription["latitude"],
+                center_lon=subscription["longitude"],
+                fuel_type=subscription["fuel_type"],
+                radius_km=subscription["radius_km"],
+            )
+            if not results:
+                logger.warning("Aucun résultat pour l'abonnement %s.", subscription_id)
+                continue
+
+            notification_url = telegram_notification_url(
+                bot_token, str(subscription["telegram_chat_id"])
+            )
+            if not send_notification(results, [notification_url]):
+                raise NotificationError("Telegram n'a pas accepté la notification.")
+
+            sent_at = datetime.now(timezone.utc)
+            log_notification(client, subscription_id, sent_at)
+            record_notification(
+                client,
+                subscription_id=subscription_id,
+                sent_count=int(subscription.get("sent_count", 0)),
+                duration_days=int(subscription["duration_days"]),
+                sent_at=sent_at,
+            )
+            logger.info("Notification envoyée pour l'abonnement %s.", subscription_id)
+        except (FuelAPIError, NoStationFoundError, NotificationError, SubscriptionError, ValueError):
+            failed = True
+            logger.exception("Échec du traitement de l'abonnement %s.", subscription_id)
+        except Exception:  # noqa: BLE001 - un abonnement ne doit pas bloquer les autres
+            failed = True
+            logger.exception("Erreur inattendue pour l'abonnement %s.", subscription_id)
+
+    return 4 if failed else 0
+
+
 def main() -> int:
     """Fonction principale invoquée en ligne de commande.
 
@@ -176,6 +258,12 @@ def main() -> int:
         Le code de sortie du processus.
     """
     _configure_logging(os.getenv("LOG_LEVEL", "INFO"))
+
+    if all(
+        os.getenv(name, "").strip()
+        for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TELEGRAM_BOT_TOKEN")
+    ):
+        return run_subscriptions()
 
     try:
         config = _read_config()

@@ -14,6 +14,7 @@ Lancement local:
 from __future__ import annotations
 
 import logging
+import os
 from html import escape
 from typing import Optional
 
@@ -31,6 +32,13 @@ from src.analyzer import (
 )
 from src.fetcher import FuelAPIError, fetch_stations
 from src.notifier import NotificationError, build_message, send_notification
+from src.subscriptions import (
+    DEFAULT_DURATION_DAYS,
+    MAX_DURATION_DAYS,
+    SubscriptionError,
+    create_subscription,
+    get_supabase_client,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("fuel_alert.app")
@@ -154,6 +162,81 @@ def _build_notification_url(channel: str, values: dict[str, str]) -> str:
     template = NOTIFICATION_TEMPLATES[channel]
     safe_values = {k: (v or f"<{k}>") for k, v in values.items()}
     return template.format(**safe_values)
+
+
+def _get_setting(name: str) -> str:
+    """Lit un secret Streamlit Cloud, puis retombe sur une variable d'environnement."""
+    try:
+        value = st.secrets.get(name)
+    except (FileNotFoundError, KeyError):
+        value = None
+    return str(value or os.getenv(name, "")).strip()
+
+
+def _render_subscription_form(
+    latitude: float,
+    longitude: float,
+    fuel_type: str,
+    radius_km: float,
+) -> None:
+    """Affiche le formulaire d'inscription aux alertes Telegram quotidiennes."""
+    st.divider()
+    st.subheader("🔔 Recevoir une alerte quotidienne")
+    st.caption(
+        "L'abonnement est gratuit et s'arrête automatiquement après la durée choisie. "
+        "Pour trouver votre Chat ID Telegram, envoyez un message à @userinfobot."
+    )
+
+    supabase_url = _get_setting("SUPABASE_URL")
+    service_role_key = _get_setting("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_role_key:
+        st.info(
+            "Les inscriptions sont momentanément indisponibles : configurez "
+            "SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY dans les secrets Streamlit."
+        )
+        return
+
+    with st.form("daily_subscription_form"):
+        chat_id = st.text_input(
+            "Chat ID Telegram",
+            placeholder="Ex: 123456789 ou -1001234567890",
+            help="Ouvrez ensuite votre bot Telegram et appuyez sur Démarrer.",
+        )
+        duration_days = st.number_input(
+            "Durée de l'abonnement (jours)",
+            min_value=1,
+            max_value=MAX_DURATION_DAYS,
+            value=DEFAULT_DURATION_DAYS,
+            step=1,
+        )
+        consent = st.checkbox("J'accepte de recevoir une notification quotidienne sur Telegram.")
+        submitted = st.form_submit_button("📲 M'inscrire aux alertes", type="primary")
+
+    if not submitted:
+        return
+    if not consent:
+        st.error("Veuillez confirmer votre inscription aux notifications.")
+        return
+
+    try:
+        client = get_supabase_client(supabase_url, service_role_key)
+        create_subscription(
+            client,
+            latitude=latitude,
+            longitude=longitude,
+            radius_km=radius_km,
+            fuel_type=fuel_type,
+            telegram_chat_id=chat_id,
+            duration_days=int(duration_days),
+        )
+    except (SubscriptionError, ValueError) as exc:
+        st.error(f"Inscription impossible : {exc}")
+        return
+
+    st.success(
+        f"Inscription confirmée pour {int(duration_days)} jours. "
+        "Vous recevrez le prochain message lors du prochain passage quotidien."
+    )
 
 
 def _render_map(center_lat: float, center_lon: float, results: Optional[list[StationResult]]) -> dict:
@@ -289,6 +372,13 @@ def main() -> None:
         st.info(f"Rayon: **{params['radius_km']} km** — Carburant: **{params['fuel_type']}**")
 
         run_clicked = st.button("🚀 Lancer la recherche maintenant", type="primary", use_container_width=True)
+
+    _render_subscription_form(
+        latitude=float(st.session_state["map_lat"]),
+        longitude=float(st.session_state["map_lon"]),
+        fuel_type=str(params["fuel_type"]),
+        radius_km=float(params["radius_km"]),
+    )
 
     if run_clicked:
         with st.spinner("Récupération des données en temps réel..."):

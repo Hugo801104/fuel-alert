@@ -26,9 +26,11 @@ fuel-price-alert/
 ├── src/
 │   ├── fetcher.py       # Appels API + pagination + gestion d'erreurs
 │   ├── analyzer.py      # Distance haversine, filtrage, tri par prix
-│   └── notifier.py      # Construction et envoi des notifications (Apprise)
+│   ├── notifier.py      # Construction et envoi des notifications (Apprise)
+│   └── subscriptions.py # Abonnements quotidiens Supabase
 ├── app.py               # Interface web Streamlit
 ├── main.py              # Point d'entrée CLI (exécuté par le cron GitHub Actions)
+├── supabase/schema.sql   # Schéma des abonnements et du journal d'envoi
 ├── .github/workflows/
 │   └── daily_check.yml  # Workflow cron quotidien (7h00 UTC)
 ├── Dockerfile
@@ -92,6 +94,36 @@ Le script lit sa configuration depuis les variables d'environnement (`.env` en l
 | `2` | Erreur API (source de données injoignable) |
 | `3` | Aucune station trouvée dans le rayon donné |
 | `4` | Échec de l'envoi de la notification |
+
+### 🔔 Abonnements quotidiens Telegram
+
+L'interface Streamlit permet à un visiteur de s'inscrire pour recevoir une
+notification Telegram quotidienne pendant 10 jours (durée réglable jusqu'à
+30 jours). Le visiteur saisit son `chat_id` Telegram ; l'abonnement est stocké
+dans Supabase et traité chaque matin par GitHub Actions.
+
+#### Configuration Supabase
+
+1. Créez un projet sur [Supabase](https://supabase.com/).
+2. Ouvrez **SQL Editor** et exécutez le contenu de `supabase/schema.sql`.
+3. Récupérez **Project URL** dans *Project Settings → Data API*.
+4. Récupérez la clé **service_role** dans *Project Settings → API*.
+5. Créez un bot avec [@BotFather](https://t.me/BotFather) et conservez son token.
+6. Configurez ces secrets dans Streamlit Cloud (*App settings → Secrets*) :
+
+```toml
+SUPABASE_URL = "https://xxxx.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "votre-cle-service-role"
+TELEGRAM_BOT_TOKEN = "123456789:AA..."
+```
+
+Ajoutez les mêmes noms dans **GitHub → Settings → Secrets and variables →
+Actions**. La clé `service_role` ne doit jamais être publiée dans le code ou
+dans le navigateur.
+
+Pour trouver un `chat_id`, un utilisateur peut ouvrir [@userinfobot](https://t.me/userinfobot)
+dans Telegram. Le workflow GitHub Actions traite ensuite tous les abonnements
+actifs chaque jour à 07:00 UTC et les désactive automatiquement à expiration.
 
 ### 🔁 Automatisation via GitHub Actions
 

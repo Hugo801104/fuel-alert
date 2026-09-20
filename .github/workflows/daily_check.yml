@@ -17,12 +17,9 @@ jobs:
     timeout-minutes: 10
 
     env:
-      LATITUDE: ${{ secrets.LATITUDE }}
-      LONGITUDE: ${{ secrets.LONGITUDE }}
-      RADIUS_KM: ${{ secrets.RADIUS_KM }}
-      FUEL_TYPE: ${{ secrets.FUEL_TYPE }}
-      NOTIFICATION_URLS: ${{ secrets.NOTIFICATION_URLS }}
-      DRY_RUN: "false"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       LOG_LEVEL: "INFO"
 
     steps:
@@ -49,4 +46,4 @@ jobs:
       - name: Résumé en cas d'échec
         if: failure()
         run: |
-          echo "::error::Le job a échoué. Vérifiez les GitHub Secrets (LATITUDE, LONGITUDE, RADIUS_KM, FUEL_TYPE, NOTIFICATION_URLS) et les logs ci-dessus."
+          echo "::error::Le job a échoué. Vérifiez les GitHub Secrets (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN) et les logs ci-dessus."
