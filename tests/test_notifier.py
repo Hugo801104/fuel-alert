@@ -30,7 +30,8 @@ def test_build_message_lists_all_three_results() -> None:
     assert "**1. Station 1**" in body
     assert "**2. Station 2**" in body
     assert "**3. Station 3**" in body
-    assert body.count("Voir sur la carte") == 3
+    assert body.count("Carte : https://www.openstreetmap.org/") == 3
+    assert ")\n" not in body
 
 
 def test_build_message_keeps_single_result_title() -> None:
@@ -39,7 +40,7 @@ def test_build_message_keeps_single_result_title() -> None:
     assert title == "⛽ Gazole à 1.500 €/L - Station 1"
 
 
-def test_build_message_compacts_api_hours_and_respects_discord_limit() -> None:
+def test_build_message_omits_hours_and_respects_discord_limit() -> None:
     result = _result("1", 1.50)
     result.horaires = {
         "@automate-24-24": "0",
@@ -54,6 +55,6 @@ def test_build_message_compacts_api_hours_and_respects_discord_limit() -> None:
 
     _, body = build_message([result, result, result])
 
-    assert "Lun: 06:00-22:00" in body
+    assert "Horaires" not in body
     assert '"@automate-24-24"' not in body
     assert len(body) <= 2000

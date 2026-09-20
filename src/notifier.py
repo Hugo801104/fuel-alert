@@ -8,7 +8,7 @@ de configuration (ex: ``tgram://token/chat_id``, ``discord://webhook_id/webhook_
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Sequence
+from typing import Sequence
 
 import apprise
 
@@ -21,42 +21,6 @@ MAX_DISCORD_BODY_LENGTH = 2000
 
 class NotificationError(Exception):
     """Levée quand l'envoi de la notification échoue sur tous les canaux."""
-
-
-def _format_hours(hours: Any) -> Optional[str]:
-    """Réduit les horaires JSON de l'API à une ligne lisible."""
-    if not hours:
-        return None
-    if isinstance(hours, str):
-        return hours[:160]
-    if not isinstance(hours, dict):
-        return str(hours)[:160]
-
-    if str(hours.get("@automate-24-24", hours.get("automate-24-24", ""))) == "1":
-        return "24h/24"
-
-    day_entries = hours.get("jour", [])
-    if not isinstance(day_entries, list):
-        return None
-
-    summaries = []
-    for day in day_entries:
-        if not isinstance(day, dict):
-            continue
-        name = str(day.get("@nom", day.get("nom", "")))[:3]
-        if not name:
-            continue
-        if str(day.get("@ferme", day.get("ferme", ""))) == "1":
-            summaries.append(f"{name}: fermé")
-            continue
-        schedule = day.get("horaire", {})
-        if isinstance(schedule, dict):
-            opening = schedule.get("@ouverture", schedule.get("ouverture"))
-            closing = schedule.get("@fermeture", schedule.get("fermeture"))
-            if opening and closing:
-                summaries.append(f"{name}: {str(opening).replace('.', ':')}-{str(closing).replace('.', ':')}")
-
-    return ", ".join(summaries)[:240] or None
 
 
 def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str, str]:
@@ -89,13 +53,10 @@ def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str
                 f"**📍 Adresse :** {result.adresse}, {result.code_postal} {result.ville}",
                 f"**📏 Distance :** {result.distance_km:.2f} km",
                 f"**🕒 Dernière mise à jour du prix :** {maj_str}",
-                f"[Voir sur la carte](https://www.openstreetmap.org/?mlat={result.latitude}"
-                f"&mlon={result.longitude}#map=17/{result.latitude}/{result.longitude})",
+                f"Carte : https://www.openstreetmap.org/?mlat={result.latitude}"
+                f"&mlon={result.longitude}#map=17/{result.latitude}/{result.longitude}",
             ]
         )
-        formatted_hours = _format_hours(result.horaires)
-        if formatted_hours:
-            body_lines.append(f"**🕑 Horaires :** {formatted_hours}")
         if index < len(result_list):
             body_lines.append("---")
 
