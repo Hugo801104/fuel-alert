@@ -136,24 +136,6 @@ L'interface sera accessible sur `http://localhost:8501`. Le fichier `.env` (à l
 - **Hugging Face Spaces** : créez un Space de type *Streamlit*, poussez le code (le `Dockerfile` fourni est aussi compatible avec un Space *Docker*), et renseignez vos variables dans *Settings → Repository secrets*.
 - **Serveur privé** : utilisez `docker-compose.yml` derrière un reverse-proxy (Nginx/Traefik) avec HTTPS.
 
-### ▲ Déploiement sur Vercel
-
-Vercel ne peut pas exécuter directement l'interface Streamlit. La configuration
-`vercel.json` déploie donc une API serverless JSON via `api/index.py`.
-
-Après déploiement, l'endpoint de recherche est disponible ainsi :
-
-```text
-/api/search?latitude=48.8566&longitude=2.3522&radius_km=5&fuel_type=Gazole
-```
-
-Pour protéger cet endpoint, configurez le secret Vercel `VERCEL_API_KEY`, puis
-envoyez cette valeur dans l'en-tête `X-API-Key`. Les coordonnées sont bornées
-à WGS84 et le rayon à 50 km.
-
-Pour héberger l'interface graphique complète, utilisez Streamlit Community
-Cloud ou Docker plutôt que Vercel.
-
 ### 🧪 Gestion des erreurs
 
 Le projet gère explicitement :
