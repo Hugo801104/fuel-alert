@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  fuel-price-alert:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fuel-price-alert:latest
+    container_name: fuel-price-alert
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
