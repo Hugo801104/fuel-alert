@@ -13,6 +13,7 @@ from typing import Sequence
 import apprise
 
 from src.analyzer import StationResult, parse_update_date
+from src.security import validate_smtp_url
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,11 @@ def send_notification(
     notifier = apprise.Apprise()
     added = 0
     for url in valid_urls:
+        try:
+            validate_smtp_url(url)
+        except ValueError as exc:
+            logger.warning("URL de notification refusée: %s", exc)
+            continue
         if notifier.add(url):
             added += 1
         else:

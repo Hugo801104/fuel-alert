@@ -39,6 +39,7 @@ from src.analyzer import (
 )
 from src.fetcher import FuelAPIError, fetch_stations
 from src.notifier import NotificationError, send_notification
+from src.security import validate_coordinates, validate_radius
 
 logger = logging.getLogger("fuel_alert")
 
@@ -78,10 +79,15 @@ def _read_config() -> dict[str, object]:
     try:
         latitude = float(lat_raw)
         longitude = float(lon_raw)
+        validate_coordinates(latitude, longitude)
     except ValueError as exc:
         raise ValueError("LATITUDE/LONGITUDE doivent être des nombres décimaux.") from exc
 
-    radius_km = float(os.getenv("RADIUS_KM", "5"))
+    try:
+        radius_km = float(os.getenv("RADIUS_KM", "5"))
+        validate_radius(radius_km)
+    except ValueError as exc:
+        raise ValueError("RADIUS_KM doit être un nombre compris entre 0 et 50 km.") from exc
     fuel_type = os.getenv("FUEL_TYPE", "Gazole")
     if fuel_type not in SUPPORTED_FUEL_TYPES:
         raise ValueError(
@@ -147,13 +153,17 @@ def run(config: dict[str, object]) -> int:
     )
 
     try:
-        send_notification(
+        notification_sent = send_notification(
             results,
             notification_urls=config["notification_urls"],  # type: ignore[arg-type]
             dry_run=config["dry_run"],  # type: ignore[arg-type]
         )
     except NotificationError as exc:
         logger.error("Échec de la notification: %s", exc)
+        return 4
+
+    if not notification_sent:
+        logger.error("La notification n'a été envoyée sur aucun canal.")
         return 4
 
     return 0

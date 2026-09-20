@@ -147,6 +147,10 @@ Après déploiement, l'endpoint de recherche est disponible ainsi :
 /api/search?latitude=48.8566&longitude=2.3522&radius_km=5&fuel_type=Gazole
 ```
 
+Pour protéger cet endpoint, configurez le secret Vercel `VERCEL_API_KEY`, puis
+envoyez cette valeur dans l'en-tête `X-API-Key`. Les coordonnées sont bornées
+à WGS84 et le rayon à 50 km.
+
 Pour héberger l'interface graphique complète, utilisez Streamlit Community
 Cloud ou Docker plutôt que Vercel.
 

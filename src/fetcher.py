@@ -270,12 +270,15 @@ def _get_with_retries(
             logger.warning("Timeout API (tentative %d/%d)", attempt, MAX_RETRIES)
         except requests.exceptions.HTTPError as exc:
             last_error = exc
+            status_code = getattr(exc.response, "status_code", None)
             logger.warning(
                 "Erreur HTTP %s (tentative %d/%d)",
-                getattr(exc.response, "status_code", "?"),
+                status_code or "?",
                 attempt,
                 MAX_RETRIES,
             )
+            if status_code is not None and 400 <= status_code < 500 and status_code != 429:
+                break
         except requests.exceptions.RequestException as exc:
             last_error = exc
             logger.warning("Erreur réseau (tentative %d/%d): %s", attempt, MAX_RETRIES, exc)

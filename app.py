@@ -14,6 +14,7 @@ Lancement local:
 from __future__ import annotations
 
 import logging
+from html import escape
 from typing import Optional
 
 import folium
@@ -179,10 +180,11 @@ def _render_map(center_lat: float, center_lon: float, results: Optional[list[Sta
             color = "green" if i == 0 else "orange"
             folium.Marker(
                 [station.latitude, station.longitude],
-                tooltip=f"{station.nom} - {station.prix:.3f} €/L",
+                tooltip=f"{escape(station.nom)} - {station.prix:.3f} €/L",
                 popup=folium.Popup(
-                    f"<b>{station.nom}</b><br>{station.adresse}, {station.ville}"
-                    f"<br>Prix: {station.prix:.3f} €/L<br>Distance: {station.distance_km:.2f} km",
+                    f"<b>{escape(station.nom)}</b><br>{escape(station.adresse)}, "
+                    f"{escape(station.ville)}<br>Prix: {station.prix:.3f} €/L"
+                    f"<br>Distance: {station.distance_km:.2f} km",
                     max_width=250,
                 ),
                 icon=folium.Icon(color=color, icon="tint"),
@@ -233,8 +235,8 @@ def _render_env_export(
     """
     st.subheader("📤 Export de la configuration")
     st.caption(
-        "Copiez ce bloc dans un fichier `.env` local, ou reportez chaque valeur "
-        "dans les **GitHub Secrets** de votre dépôt (Settings → Secrets and variables → Actions)."
+        "Ce bloc contient uniquement les paramètres non sensibles. Configurez "
+        "NOTIFICATION_URLS séparément dans les **GitHub Secrets** ou le gestionnaire de secrets."
     )
 
     env_content = (
@@ -242,7 +244,7 @@ def _render_env_export(
         f"LONGITUDE={lon:.6f}\n"
         f"RADIUS_KM={radius_km}\n"
         f"FUEL_TYPE={fuel_type}\n"
-        f"NOTIFICATION_URLS={notification_url}\n"
+        "# NOTIFICATION_URLS is intentionally omitted; configure it in a secret manager.\n"
         f"DRY_RUN=false\n"
         f"LOG_LEVEL=INFO\n"
     )
