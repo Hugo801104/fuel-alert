@@ -3,8 +3,8 @@
 
 Lit la configuration depuis les variables d'environnement (ou un
 fichier ``.env`` en local via ``python-dotenv``), interroge l'API des
-prix des carburants, détermine la station la moins chère dans le rayon
-configuré, puis envoie une notification.
+prix des carburants, détermine les trois meilleurs prix mis à jour depuis
+moins de trois jours dans le rayon configuré, puis envoie une notification.
 
 Variables d'environnement attendues:
     LATITUDE (float): Latitude du point de recherche. Obligatoire.
@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 from src.analyzer import (
     SUPPORTED_FUEL_TYPES,
     NoStationFoundError,
-    find_cheapest_station,
+    rank_stations,
 )
 from src.fetcher import FuelAPIError, fetch_stations
 from src.notifier import NotificationError, send_notification
@@ -124,7 +124,7 @@ def run(config: dict[str, object]) -> int:
         return 2
 
     try:
-        best = find_cheapest_station(
+        results = rank_stations(
             stations,
             center_lat=config["latitude"],  # type: ignore[arg-type]
             center_lon=config["longitude"],  # type: ignore[arg-type]
@@ -135,16 +135,20 @@ def run(config: dict[str, object]) -> int:
         logger.warning("Aucune station trouvée: %s", exc)
         return 3
 
+    if not results:
+        logger.warning("Aucune station avec un prix mis à jour depuis moins de 3 jours.")
+        return 3
+
     logger.info(
-        "Meilleure station trouvée: %s - %.3f €/L à %.2f km",
-        best.nom,
-        best.prix,
-        best.distance_km,
+        "%d meilleur(s) prix trouvé(s), de %.3f €/L à %.3f €/L",
+        len(results),
+        results[0].prix,
+        results[-1].prix,
     )
 
     try:
         send_notification(
-            best,
+            results,
             notification_urls=config["notification_urls"],  # type: ignore[arg-type]
             dry_run=config["dry_run"],  # type: ignore[arg-type]
         )

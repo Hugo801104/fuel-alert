@@ -8,7 +8,7 @@ de configuration (ex: ``tgram://token/chat_id``, ``discord://webhook_id/webhook_
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Sequence
 
 import apprise
 
@@ -21,48 +21,57 @@ class NotificationError(Exception):
     """Levée quand l'envoi de la notification échoue sur tous les canaux."""
 
 
-def build_message(result: StationResult) -> tuple[str, str]:
+def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str, str]:
     """Construit le titre et le corps (Markdown) du message de notification.
 
     Args:
-        result: Résultat de la station la moins chère à notifier.
+        results: Un résultat ou une séquence de résultats classés par prix.
 
     Returns:
         Un tuple ``(titre, corps_markdown)``.
     """
-    maj_dt = parse_update_date(result.derniere_maj)
-    maj_str = maj_dt.strftime("%d/%m/%Y à %H:%M") if maj_dt else (result.derniere_maj or "N/A")
+    result_list = [results] if isinstance(results, StationResult) else list(results)
+    if not result_list:
+        raise ValueError("Au moins un résultat est requis pour construire une notification.")
 
-    title = f"⛽ {result.fuel_type} à {result.prix:.3f} €/L - {result.nom}"
-
-    body_lines = [
-        f"**⛽ Carburant :** {result.fuel_type}",
-        f"**💶 Prix :** {result.prix:.3f} €/L",
-        f"**🏪 Station :** {result.nom}",
-        f"**📍 Adresse :** {result.adresse}, {result.code_postal} {result.ville}",
-        f"**📏 Distance :** {result.distance_km:.2f} km",
-        f"**🕒 Dernière mise à jour du prix :** {maj_str}",
-    ]
-    if result.horaires:
-        body_lines.append(f"**🕑 Horaires :** {result.horaires}")
-
-    body_lines.append(
-        f"\n[Voir sur la carte](https://www.openstreetmap.org/?mlat={result.latitude}"
-        f"&mlon={result.longitude}#map=17/{result.latitude}/{result.longitude})"
+    first = result_list[0]
+    title = (
+        f"⛽ Top {len(result_list)} prix {first.fuel_type}"
+        if len(result_list) > 1
+        else f"⛽ {first.fuel_type} à {first.prix:.3f} €/L - {first.nom}"
     )
+    body_lines = []
+    for index, result in enumerate(result_list, start=1):
+        maj_dt = parse_update_date(result.derniere_maj)
+        maj_str = maj_dt.strftime("%d/%m/%Y à %H:%M") if maj_dt else (result.derniere_maj or "N/A")
+        body_lines.extend(
+            [
+                f"**{index}. {result.nom}**",
+                f"**⛽ Carburant :** {result.fuel_type} | **💶 Prix :** {result.prix:.3f} €/L",
+                f"**📍 Adresse :** {result.adresse}, {result.code_postal} {result.ville}",
+                f"**📏 Distance :** {result.distance_km:.2f} km",
+                f"**🕒 Dernière mise à jour du prix :** {maj_str}",
+                f"[Voir sur la carte](https://www.openstreetmap.org/?mlat={result.latitude}"
+                f"&mlon={result.longitude}#map=17/{result.latitude}/{result.longitude})",
+            ]
+        )
+        if result.horaires:
+            body_lines.append(f"**🕑 Horaires :** {result.horaires}")
+        if index < len(result_list):
+            body_lines.append("---")
 
     return title, "\n\n".join(body_lines)
 
 
 def send_notification(
-    result: StationResult,
+    results: StationResult | Sequence[StationResult],
     notification_urls: list[str],
     dry_run: bool = False,
 ) -> bool:
     """Envoie une notification sur un ou plusieurs canaux via Apprise.
 
     Args:
-        result: Résultat de la station la moins chère.
+        results: Un résultat ou une séquence de résultats classés par prix.
         notification_urls: Liste d'URLs Apprise (une par canal). Formats
             courants :
                 - Telegram: ``tgram://{bot_token}/{chat_id}``
@@ -80,7 +89,7 @@ def send_notification(
         NotificationError: Si aucune URL n'est fournie et que
             ``dry_run`` est désactivé.
     """
-    title, body = build_message(result)
+    title, body = build_message(results)
 
     if dry_run:
         logger.info("[DRY-RUN] Notification non envoyée. Aperçu:\n%s\n%s", title, body)

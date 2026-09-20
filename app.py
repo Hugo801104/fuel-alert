@@ -320,21 +320,21 @@ def main() -> None:
     results = st.session_state["results"]
     if results:
         st.success(
-            f"✅ {len(results)} station(s) trouvée(s). La moins chère : "
+            f"✅ Top {len(results)} station(s) trouvée(s). La moins chère : "
             f"**{results[0].nom}** à **{results[0].prix:.3f} €/L** "
             f"({results[0].distance_km:.2f} km)."
         )
         _render_results_table(results)
 
         with st.expander("✉️ Aperçu du message de notification"):
-            title, body = build_message(results[0])
+            title, body = build_message(results)
             st.markdown(f"**{title}**")
             st.markdown(body)
 
         notification_url = _build_notification_url(params["channel"], params["channel_values"])
         if st.button("🧪 Tester l'envoi de la notification maintenant"):
             try:
-                send_notification(results[0], [notification_url])
+                send_notification(results, [notification_url])
                 st.success("Notification envoyée avec succès !")
             except NotificationError as exc:
                 st.error(f"Échec de l'envoi: {exc}")

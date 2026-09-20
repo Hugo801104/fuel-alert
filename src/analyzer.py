@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from math import asin, cos, radians, sin, sqrt
 from typing import Optional
 
@@ -18,6 +18,8 @@ from src.fetcher import RawStation
 logger = logging.getLogger(__name__)
 
 EARTH_RADIUS_KM = 6371.0088
+MAX_PRICE_AGE_DAYS = 3
+DEFAULT_RESULT_LIMIT = 3
 
 # Correspondance entre les codes carburant utilisés dans l'app et les
 # libellés effectivement utilisés par l'API gouvernementale (repli,
@@ -294,8 +296,9 @@ def rank_stations(
         radius_km: Rayon de recherche en kilomètres.
 
     Returns:
-        Liste de :class:`StationResult` triée par prix croissant (la
-        moins chère en premier). Peut être vide.
+        Les trois :class:`StationResult` les moins chers, triés par prix
+        croissant. Peut être vide. Les prix datant de trois jours ou plus,
+        ou dont la date est absente/invalide, sont exclus.
     """
     results: list[StationResult] = []
 
@@ -311,6 +314,17 @@ def rank_stations(
             continue
 
         prix, maj = price_info
+        maj_dt = parse_update_date(maj)
+        if maj_dt is None:
+            logger.debug("Prix ignoré (date de mise à jour invalide): %s", station.station_id)
+            continue
+        if maj_dt.tzinfo is None:
+            maj_dt = maj_dt.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - maj_dt).total_seconds() / 86400
+        if age_days >= MAX_PRICE_AGE_DAYS:
+            logger.debug("Prix trop ancien pour %s: %s", station.station_id, maj)
+            continue
+
         enseigne = station.raw.get("marque") or station.raw.get("enseigne") or "Station"
         nom = f"{enseigne} - {station.ville}" if station.ville else str(enseigne)
 
@@ -332,7 +346,7 @@ def rank_stations(
         )
 
     results.sort(key=lambda r: (r.prix, r.distance_km))
-    return results
+    return results[:DEFAULT_RESULT_LIMIT]
 
 
 def parse_update_date(raw_date: Optional[str]) -> Optional[datetime]:
@@ -345,8 +359,12 @@ def parse_update_date(raw_date: Optional[str]) -> Optional[datetime]:
         Un objet :class:`datetime.datetime`, ou ``None`` si le parsing
         échoue ou si ``raw_date`` est vide.
     """
-    if not raw_date:
+    if not isinstance(raw_date, str) or not raw_date:
         return None
+    try:
+        return datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+    except ValueError:
+        pass
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
         try:
             return datetime.strptime(raw_date, fmt)

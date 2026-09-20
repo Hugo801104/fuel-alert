@@ -40,6 +40,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Exécution des tests
+        run: pytest -q
+
       - name: Exécution de la recherche et de la notification
         run: python main.py
 

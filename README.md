@@ -15,7 +15,7 @@
 **Fuel Price Alert** est un projet open-source qui :
 
 1. **Récupère quotidiennement** les prix des carburants en France via l'[API Open Data officielle](https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/) du Ministère de l'Économie.
-2. **Identifie la station la moins chère** dans un rayon défini autour d'un point GPS.
+2. **Identifie les trois meilleurs prix récents** dans un rayon défini autour d'un point GPS (mise à jour de moins de 3 jours).
 3. **Envoie une alerte automatique** chaque matin (Telegram, Discord, Slack ou e-mail) via GitHub Actions.
 4. **Fournit une interface web interactive** (Streamlit) pour configurer et tester le tout visuellement, avec carte OpenStreetMap.
 
@@ -54,6 +54,15 @@ pip install -r requirements.txt
 cp .env.example .env
 # Éditez .env avec vos coordonnées GPS et votre canal de notification
 ```
+
+### 🧪 Exécuter les tests
+
+```bash
+python -m pytest -q
+```
+
+Les tests se trouvent dans `tests/` et sont exécutés automatiquement avant
+la recherche quotidienne dans GitHub Actions.
 
 ### 🖥️ Lancer l'interface web
 
@@ -126,6 +135,20 @@ L'interface sera accessible sur `http://localhost:8501`. Le fichier `.env` (à l
 - **Streamlit Community Cloud** : connectez votre dépôt GitHub sur [share.streamlit.io](https://share.streamlit.io), pointez vers `app.py`, et ajoutez vos secrets dans *App settings → Secrets* (format TOML).
 - **Hugging Face Spaces** : créez un Space de type *Streamlit*, poussez le code (le `Dockerfile` fourni est aussi compatible avec un Space *Docker*), et renseignez vos variables dans *Settings → Repository secrets*.
 - **Serveur privé** : utilisez `docker-compose.yml` derrière un reverse-proxy (Nginx/Traefik) avec HTTPS.
+
+### ▲ Déploiement sur Vercel
+
+Vercel ne peut pas exécuter directement l'interface Streamlit. La configuration
+`vercel.json` déploie donc une API serverless JSON via `api/index.py`.
+
+Après déploiement, l'endpoint de recherche est disponible ainsi :
+
+```text
+/api/search?latitude=48.8566&longitude=2.3522&radius_km=5&fuel_type=Gazole
+```
+
+Pour héberger l'interface graphique complète, utilisez Streamlit Community
+Cloud ou Docker plutôt que Vercel.
 
 ### 🧪 Gestion des erreurs
 
