@@ -56,6 +56,7 @@ st.set_page_config(
 
 DEFAULT_LAT = 48.8566  # Paris
 DEFAULT_LON = 2.3522
+TELEGRAM_BOT_USERNAME = "fuel_price_alert_bot"
 
 def _init_session_state() -> None:
     """Initialise les valeurs par défaut du ``st.session_state``."""
@@ -138,12 +139,12 @@ def _render_subscription_form(
     fuel_type: str,
     radius_km: float,
 ) -> dict[str, str]:
-    """Affiche le formulaire d'inscription aux alertes Telegram quotidiennes."""
+    """Affiche le formulaire d'inscription Telegram ou Discord."""
     st.divider()
     st.subheader("🔔 Recevoir une alerte quotidienne")
     st.caption(
         "L'abonnement est gratuit et s'arrête automatiquement après la durée choisie. "
-        "Pour trouver votre Chat ID Telegram, envoyez un message à @userinfobot."
+        f"Telegram : utilisez @{TELEGRAM_BOT_USERNAME}."
     )
 
     supabase_url = _get_setting("SUPABASE_URL")
@@ -159,22 +160,23 @@ def _render_subscription_form(
         channel = st.selectbox("Canal de notification", options=list(SUPPORTED_CHANNELS))
         if channel == "Telegram":
             st.info(
-                "1. Ouvrez le bot Telegram indiqué par le propriétaire de l'application. "
+                f"1. Ouvrez @{TELEGRAM_BOT_USERNAME}. "
                 "2. Appuyez sur Démarrer ou envoyez /start. "
-                "3. Envoyez votre Chat ID numérique ci-dessous."
+                "3. Récupérez votre identifiant numérique avec @userinfobot."
             )
             channel_value = st.text_input(
-                "Chat ID Telegram",
+                "Identifiant de discussion Telegram (Chat ID)",
                 placeholder="Ex: 123456789 ou -1001234567890",
-                help="Un groupe doit d'abord ajouter le bot et utiliser son identifiant -100...",
+                help=f"Cet identifiant doit être associé à @{TELEGRAM_BOT_USERNAME}.",
             )
         else:
             st.info(
-                "Dans Discord, créez un salon, ouvrez Modifier le salon > Intégrations > "
-                "Webhooks, créez un webhook, puis copiez son URL complète ici."
+                "1. Ouvrez le serveur et le salon Discord destinataires. "
+                "2. Modifier le salon > Intégrations > Webhooks. "
+                "3. Créez un webhook, copiez son URL complète et collez-la ici."
             )
             channel_value = st.text_input(
-                "URL du webhook Discord",
+                "URL du webhook Discord (salon destinataire)",
                 placeholder="https://discord.com/api/webhooks/...",
                 type="password",
             )

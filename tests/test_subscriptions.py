@@ -13,6 +13,7 @@ from src.subscriptions import (
     SubscriptionError,
     _validate_supabase_url,
     discord_notification_url,
+    log_subscription_error,
 )
 
 
@@ -84,6 +85,15 @@ def test_discord_notification_url_converts_valid_webhook() -> None:
     assert discord_notification_url("https://discord.com/api/webhooks/123/token") == (
         "discord://123/token"
     )
+
+
+def test_log_subscription_error_writes_bounded_error() -> None:
+    client = _FakeClient()
+
+    log_subscription_error(client, "subscription-1", "Erreur de test")
+
+    assert client.tables["subscription_errors"].inserted[0]["subscription_id"] == "subscription-1"
+    assert client.tables["subscription_errors"].inserted[0]["error_message"] == "Erreur de test"
 
 
 def test_create_subscription_sets_expiration_and_first_run() -> None:

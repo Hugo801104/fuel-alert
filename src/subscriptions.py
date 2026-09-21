@@ -155,6 +155,23 @@ def notification_was_sent_today(client: Any, subscription_id: str, today: str) -
     return bool(response.data)
 
 
+def log_subscription_error(
+    client: Any,
+    subscription_id: str,
+    error_message: str,
+    occurred_at: datetime | None = None,
+) -> None:
+    """Enregistre une erreur d'abonnement sans interrompre les autres traitements."""
+    current = occurred_at or datetime.now(timezone.utc)
+    client.table("subscription_errors").insert(
+        {
+            "subscription_id": subscription_id,
+            "error_message": error_message[:1000],
+            "occurred_at": current.isoformat(),
+        }
+    ).execute()
+
+
 def delete_subscription(client: Any, subscription_id: str) -> None:
     """Supprime un abonnement terminé; ses journaux sont supprimés en cascade."""
     client.table("subscriptions").delete().eq("id", subscription_id).execute()

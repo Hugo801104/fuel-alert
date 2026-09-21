@@ -160,7 +160,7 @@ la fin de la durée.
 
 #### Telegram
 
-1. Ouvrez le bot Telegram utilisé par l'application.
+1. Ouvrez le bot Telegram **@fuel_price_alert_bot**.
 2. Appuyez sur **Démarrer** ou envoyez `/start` avant de vous inscrire.
 3. Récupérez votre identifiant numérique avec `@userinfobot`.
 4. Choisissez **Telegram**, saisissez cet identifiant dans **Chat ID Telegram**,
@@ -168,13 +168,13 @@ la fin de la durée.
 5. Pour un groupe, ajoutez d'abord le bot au groupe et utilisez l'identifiant
 	du groupe, généralement au format `-100...`.
 
-Le bot doit être celui correspondant au secret `TELEGRAM_BOT_TOKEN`. Un Chat ID
+Le bot doit être **@fuel_price_alert_bot**, correspondant au secret `TELEGRAM_BOT_TOKEN`. Un Chat ID
 provenant d'un autre bot provoque l'erreur `chat not found`.
 
 #### Discord
 
 1. Ouvrez le serveur Discord et le salon qui doit recevoir les alertes.
-2. Ouvrez **Modifier le salon → Intégrations → Webhooks**.
+2. Ouvrez **Modifier le salon → Intégrations → Webhooks** (dans le salon cible).
 3. Créez un webhook, copiez son URL complète et ne la partagez pas.
 4. Choisissez **Discord**, collez l'URL dans **URL du webhook Discord**,
 	acceptez la notification, puis validez.

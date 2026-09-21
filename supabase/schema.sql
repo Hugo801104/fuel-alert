@@ -44,8 +44,16 @@ create table if not exists notification_logs (
     unique (subscription_id, notification_date)
 );
 
+create table if not exists subscription_errors (
+    id uuid primary key default gen_random_uuid(),
+    subscription_id uuid not null references subscriptions(id) on delete cascade,
+    error_message text not null,
+    occurred_at timestamptz not null default now()
+);
+
 alter table subscriptions enable row level security;
 alter table notification_logs enable row level security;
+alter table subscription_errors enable row level security;
 
 -- L'application utilise uniquement la clé service_role côté serveur.
 -- Aucune donnée d'abonnement n'est exposée directement au navigateur.

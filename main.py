@@ -47,6 +47,7 @@ from src.subscriptions import (
     discord_notification_url,
     get_supabase_client,
     list_due_subscriptions,
+    log_subscription_error,
     log_notification,
     notification_was_sent_today,
     record_notification,
@@ -201,14 +202,13 @@ def run_subscriptions() -> int:
         return 1
 
     logger.info("%d abonnement(s) à traiter.", len(subscriptions))
-    failed = False
     for subscription in subscriptions:
         subscription_id = str(subscription["id"])
-        if notification_was_sent_today(client, subscription_id, today):
-            logger.info("Notification déjà envoyée aujourd'hui pour %s.", subscription_id)
-            continue
-
         try:
+            if notification_was_sent_today(client, subscription_id, today):
+                logger.info("Notification déjà envoyée aujourd'hui pour %s.", subscription_id)
+                continue
+
             stations = fetch_stations(
                 latitude=subscription["latitude"],
                 longitude=subscription["longitude"],
@@ -247,14 +247,20 @@ def run_subscriptions() -> int:
                 sent_at=sent_at,
             )
             logger.info("Notification envoyée pour l'abonnement %s.", subscription_id)
-        except (FuelAPIError, NoStationFoundError, NotificationError, SubscriptionError, ValueError):
-            failed = True
-            logger.exception("Échec du traitement de l'abonnement %s.", subscription_id)
+        except (FuelAPIError, NoStationFoundError, NotificationError, SubscriptionError, ValueError) as exc:
+            logger.error("Échec du traitement de l'abonnement %s: %s", subscription_id, exc)
+            try:
+                log_subscription_error(client, subscription_id, str(exc))
+            except Exception:  # noqa: BLE001 - le journal ne doit pas bloquer les autres abonnements
+                logger.exception("Impossible de journaliser l'erreur de l'abonnement %s.", subscription_id)
         except Exception:  # noqa: BLE001 - un abonnement ne doit pas bloquer les autres
-            failed = True
             logger.exception("Erreur inattendue pour l'abonnement %s.", subscription_id)
+            try:
+                log_subscription_error(client, subscription_id, "Erreur inattendue lors du traitement")
+            except Exception:  # noqa: BLE001 - le journal ne doit pas bloquer les autres abonnements
+                logger.exception("Impossible de journaliser l'erreur de l'abonnement %s.", subscription_id)
 
-    return 4 if failed else 0
+    return 0
 
 
 def main() -> int:
@@ -267,7 +273,7 @@ def main() -> int:
 
     if all(
         os.getenv(name, "").strip()
-        for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "TELEGRAM_BOT_TOKEN")
+        for name in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
     ):
         return run_subscriptions()
 
