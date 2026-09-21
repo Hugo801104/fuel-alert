@@ -30,6 +30,17 @@ def test_send_notification_rejects_unsupported_channel() -> None:
         send_notification([_result()], ["http://example.com/hook"])
 
 
+def test_build_message_escapes_station_text() -> None:
+    result = _result()
+    result.nom = "Station **frauduleuse**"
+    result.adresse = "[adresse](https://example.com)"
+
+    _, body = build_message(result)
+
+    assert "\\*\\*frauduleuse\\*\\*" in body
+    assert "\\[adresse\\]" in body
+
+
 from datetime import datetime, timezone
 
 

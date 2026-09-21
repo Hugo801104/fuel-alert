@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 CHAT_ID_PATTERN = re.compile(r"^-?\d{1,30}$")
 DEFAULT_DURATION_DAYS = 10
 MAX_DURATION_DAYS = 30
+MAX_ACTIVE_SUBSCRIPTIONS = 100
 SUPPORTED_CHANNELS = ("Telegram", "Discord")
 
 
@@ -122,7 +123,13 @@ def create_subscription(
         "expires_at": expires_at.isoformat(),
         "next_run_at": started_at.isoformat(),
     }
-    response = client.table("subscriptions").insert(payload).execute()
+    try:
+        response = client.table("subscriptions").insert(payload).execute()
+    except Exception as exc:  # noqa: BLE001 - le client Supabase expose plusieurs types d'erreurs
+        raise SubscriptionError(
+            "Inscription impossible : la limite d'abonnements actifs est peut-être atteinte "
+            "ou les données existent déjà."
+        ) from exc
     if not response.data:
         raise SubscriptionError("Supabase n'a pas retourné l'abonnement créé.")
     return response.data[0]

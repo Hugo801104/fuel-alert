@@ -217,6 +217,28 @@ Le projet gère explicitement :
 - la **rupture de stock** d'un carburant à une station donnée (prix `null` ignoré) ;
 - les **URLs de notification invalides ou manquantes**.
 
+### 🔐 Mesures de protection
+
+L'application limite les inscriptions et les tests de notification par session,
+valide les URLs sortantes, échappe les données affichées dans les messages et
+applique des contraintes Supabase sur les coordonnées, carburants et doublons
+d'abonnements actifs. Supabase refuse toute création au-delà de **100
+abonnements actifs** ; les journaux sont liés à l'abonnement et disparaissent
+avec lui. Les exécutions GitHub Actions sont également sérialisées pour éviter
+les doubles notifications.
+
+Cette limite porte sur les données et les traitements métier. Supabase facture
+également selon son offre et son trafic API : pour plafonner les requêtes HTTP,
+configurez les quotas/rate limits Supabase et un WAF ou reverse proxy devant
+Streamlit. Une contrainte SQL ne peut pas limiter les requêtes HTTP déjà reçues.
+
+Ces protections réduisent les abus applicatifs, mais ne remplacent pas une
+protection anti-DDoS réseau. Pour une instance publique, placez Streamlit
+derrière un reverse proxy ou un WAF avec limitation par IP, TLS, taille de
+requête et protection DDoS (par exemple Cloudflare ou le service équivalent de
+votre hébergeur). Ne rendez jamais la clé `SUPABASE_SERVICE_ROLE_KEY`
+accessible au navigateur.
+
 ### 🤝 Contribuer
 
 Les *pull requests* sont bienvenues ! Merci de respecter le typage (`type hints`), les docstrings Google Style, et d'ajouter des tests pour toute nouvelle logique métier.

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from html import escape
 from typing import Optional
 
@@ -57,6 +58,10 @@ st.set_page_config(
 DEFAULT_LAT = 48.8566  # Paris
 DEFAULT_LON = 2.3522
 TELEGRAM_BOT_USERNAME = "fuel_price_alert_bot"
+SUBSCRIPTION_LIMIT = 3
+SUBSCRIPTION_WINDOW_SECONDS = 24 * 60 * 60
+TEST_NOTIFICATION_LIMIT = 5
+TEST_NOTIFICATION_WINDOW_SECONDS = 60 * 60
 
 def _init_session_state() -> None:
     """Initialise les valeurs par défaut du ``st.session_state``."""
@@ -65,10 +70,24 @@ def _init_session_state() -> None:
         "map_lon": DEFAULT_LON,
         "results": None,
         "last_error": None,
+        "subscription_attempts": [],
+        "notification_test_attempts": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def _allow_action(key: str, limit: int, window_seconds: int) -> bool:
+    """Applique un quota local par session pour limiter les abus évidents."""
+    now = time.monotonic()
+    attempts = [stamp for stamp in st.session_state[key] if now - stamp < window_seconds]
+    if len(attempts) >= limit:
+        st.session_state[key] = attempts
+        return False
+    attempts.append(now)
+    st.session_state[key] = attempts
+    return True
 
 
 def _geocode_address(address: str) -> Optional[tuple[float, float]]:
@@ -194,6 +213,11 @@ def _render_subscription_form(
         return {"channel": channel, "value": channel_value}
     if not consent:
         st.error("Veuillez confirmer votre inscription aux notifications.")
+        return {"channel": channel, "value": channel_value}
+    if not _allow_action(
+        "subscription_attempts", SUBSCRIPTION_LIMIT, SUBSCRIPTION_WINDOW_SECONDS
+    ):
+        st.error("Limite d'inscriptions atteinte pour cette session. Réessayez plus tard.")
         return {"channel": channel, "value": channel_value}
 
     try:
@@ -421,6 +445,13 @@ def main() -> None:
         else:
             notification_url = discord_notification_url(subscription_config["value"])
         if st.button("🧪 Tester l'envoi de la notification maintenant"):
+            if not _allow_action(
+                "notification_test_attempts",
+                TEST_NOTIFICATION_LIMIT,
+                TEST_NOTIFICATION_WINDOW_SECONDS,
+            ):
+                st.error("Trop de tests d'envoi. Réessayez plus tard.")
+                return
             try:
                 send_notification(results, [notification_url])
                 st.success("Notification envoyée avec succès !")

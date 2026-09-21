@@ -10,18 +10,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: daily-fuel-price-check
+  cancel-in-progress: false
+
 jobs:
   check-fuel-prices:
     name: Rechercher et notifier le prix le moins cher
     # Évite la migration implicite de ubuntu-latest vers Ubuntu 26.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      LOG_LEVEL: "INFO"
 
     steps:
       - name: Checkout du dépôt
@@ -35,6 +33,10 @@ jobs:
 
       - name: Vérification des secrets requis
         shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           missing=0
           for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
@@ -59,6 +61,11 @@ jobs:
         run: pytest -q
 
       - name: Exécution de la recherche et de la notification
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          LOG_LEVEL: "INFO"
         run: python main.py
 
       - name: Résumé en cas d'échec

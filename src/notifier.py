@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 MAX_DISCORD_BODY_LENGTH = 2000
 
 
+def _escape_markdown(value: object) -> str:
+    """Neutralise les caractères Markdown des données issues de l'API."""
+    text = str(value or "")
+    for character in ("\\", "`", "*", "_", "[", "]", "~"):
+        text = text.replace(character, f"\\{character}")
+    return text
+
+
 class NotificationError(Exception):
     """Levée quand l'envoi de la notification échoue sur tous les canaux."""
 
@@ -49,9 +57,9 @@ def build_message(results: StationResult | Sequence[StationResult]) -> tuple[str
         maj_str = maj_dt.strftime("%d/%m/%Y à %H:%M") if maj_dt else (result.derniere_maj or "N/A")
         body_lines.extend(
             [
-                f"**{index}. {result.nom}**",
-                f"**⛽ Carburant :** {result.fuel_type} | **💶 Prix :** {result.prix:.3f} €/L",
-                f"**📍 Adresse :** {result.adresse}, {result.code_postal} {result.ville}",
+                f"**{index}. {_escape_markdown(result.nom)}**",
+                f"**⛽ Carburant :** {_escape_markdown(result.fuel_type)} | **💶 Prix :** {result.prix:.3f} €/L",
+                f"**📍 Adresse :** {_escape_markdown(result.adresse)}, {_escape_markdown(result.code_postal)} {_escape_markdown(result.ville)}",
                 f"**📏 Distance :** {result.distance_km:.2f} km",
                 f"**🕒 Dernière mise à jour du prix :** {maj_str}",
                 f"Carte : https://www.openstreetmap.org/?mlat={result.latitude}"
