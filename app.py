@@ -156,8 +156,8 @@ def _render_subscription_form(
         )
         return {"channel": "Telegram", "value": ""}
 
+    channel = st.selectbox("Canal de notification", options=list(SUPPORTED_CHANNELS))
     with st.form("daily_subscription_form"):
-        channel = st.selectbox("Canal de notification", options=list(SUPPORTED_CHANNELS))
         if channel == "Telegram":
             st.info(
                 f"1. Ouvrez @{TELEGRAM_BOT_USERNAME}. "

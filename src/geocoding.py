@@ -58,7 +58,7 @@ def geocode_address(
             query,
             exactly_one=True,
             addressdetails=False,
-            countrycodes="fr",
+            country_codes="fr",
             timeout=timeout,
         )
     except (GeocoderTimedOut, GeocoderQuotaExceeded) as exc:

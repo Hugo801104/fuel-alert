@@ -40,7 +40,7 @@ def test_geocode_address_sends_bounded_french_query() -> None:
             {
                 "exactly_one": True,
                 "addressdetails": False,
-                "countrycodes": "fr",
+                "country_codes": "fr",
                 "timeout": 10,
             },
         )
