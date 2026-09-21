@@ -135,11 +135,19 @@ Dans votre dépôt : **Settings → Secrets and variables → Actions → New re
 
 | Secret | Exemple | Description |
 |--------|---------|--------------|
+| `SUPABASE_URL` | `https://xxxx.supabase.co` | URL du projet Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Clé serveur Supabase, gardée secrète |
+| `TELEGRAM_BOT_TOKEN` | `123456789:AA...` | Token du bot Telegram |
 | `LATITUDE` | `48.8566` | Latitude du point de recherche |
 | `LONGITUDE` | `2.3522` | Longitude du point de recherche |
 | `RADIUS_KM` | `5` | Rayon de recherche en km |
 | `FUEL_TYPE` | `Gazole` | `E10`, `SP95`, `SP98`, `Gazole`, `E85` ou `GPLc` |
 | `NOTIFICATION_URLS` | `tgram://123:ABC/456` | Une ou plusieurs URLs [Apprise](https://github.com/caronc/apprise), séparées par des virgules |
+
+Le workflow utilise les trois premiers secrets pour traiter les abonnements
+Telegram stockés dans Supabase. Les paramètres de recherche et
+`NOTIFICATION_URLS` servent à l'exécution CLI directe lorsque le mode
+abonnements n'est pas activé.
 
 > 💡 L'onglet **"Export de la configuration"** de l'interface Streamlit génère directement ces valeurs pour vous.
 
