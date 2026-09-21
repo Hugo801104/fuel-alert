@@ -1,10 +1,39 @@
-from datetime import datetime, timezone
+import pytest
 
 from src.analyzer import StationResult
-from src.notifier import build_message
+from src.notifier import NotificationError, build_message, send_notification
 
 
-def _result(station_id: str, price: float) -> StationResult:
+def _result() -> StationResult:
+    return StationResult(
+        station_id="1",
+        nom="Station",
+        adresse="1 rue Test",
+        ville="Paris",
+        code_postal="75001",
+        latitude=48.8566,
+        longitude=2.3522,
+        distance_km=1.2,
+        fuel_type="Gazole",
+        prix=1.7,
+        derniere_maj="2026-09-21T10:00:00+00:00",
+        horaires=None,
+    )
+
+
+def test_send_notification_dry_run_does_not_require_a_channel() -> None:
+    assert send_notification([_result()], [], dry_run=True) is True
+
+
+def test_send_notification_rejects_unsupported_channel() -> None:
+    with pytest.raises(NotificationError):
+        send_notification([_result()], ["http://example.com/hook"])
+
+
+from datetime import datetime, timezone
+
+
+def _message_result(station_id: str, price: float) -> StationResult:
     return StationResult(
         station_id=station_id,
         nom=f"Station {station_id}",
@@ -22,7 +51,7 @@ def _result(station_id: str, price: float) -> StationResult:
 
 
 def test_build_message_lists_all_three_results() -> None:
-    results = [_result("1", 1.50), _result("2", 1.55), _result("3", 1.60)]
+    results = [_message_result("1", 1.50), _message_result("2", 1.55), _message_result("3", 1.60)]
 
     title, body = build_message(results)
 
@@ -35,13 +64,13 @@ def test_build_message_lists_all_three_results() -> None:
 
 
 def test_build_message_keeps_single_result_title() -> None:
-    title, _ = build_message(_result("1", 1.50))
+    title, _ = build_message(_message_result("1", 1.50))
 
     assert title == "⛽ Gazole à 1.500 €/L - Station 1"
 
 
 def test_build_message_omits_hours_and_respects_discord_limit() -> None:
-    result = _result("1", 1.50)
+    result = _message_result("1", 1.50)
     result.horaires = {
         "@automate-24-24": "0",
         "jour": [

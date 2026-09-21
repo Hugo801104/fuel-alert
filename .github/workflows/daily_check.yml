@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           missing=0
-          for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY TELEGRAM_BOT_TOKEN; do
+          for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error title=Secret manquant::$name n'est pas configuré dans Settings > Secrets and variables > Actions."
               missing=1
@@ -45,6 +45,9 @@ jobs:
           done
           if [ "$missing" -ne 0 ]; then
             exit 1
+          fi
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN est requis uniquement si un abonnement Telegram est actif."
           fi
 
       - name: Installation des dépendances

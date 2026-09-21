@@ -8,6 +8,7 @@ import socket
 from urllib.parse import urlsplit
 
 MAX_RADIUS_KM = 50.0
+ALLOWED_NOTIFICATION_SCHEMES = {"tgram", "telegram", "discord"}
 
 
 def validate_coordinates(latitude: float, longitude: float) -> None:
@@ -40,5 +41,23 @@ def validate_smtp_url(url: str) -> None:
         raise ValueError("L'hôte SMTP est introuvable.") from exc
     for address in addresses:
         ip = ipaddress.ip_address(address)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_unspecified
+            or ip.is_multicast
+        ):
             raise ValueError("Les hôtes SMTP privés ou locaux sont interdits.")
+
+
+def validate_notification_url(url: str) -> None:
+    """Autorise uniquement Telegram et Discord dans la configuration sortante."""
+    if any(ord(character) < 32 for character in url):
+        raise ValueError("L'URL de notification contient un caractère de contrôle.")
+    parsed = urlsplit(url)
+    if parsed.scheme.lower() not in ALLOWED_NOTIFICATION_SCHEMES:
+        raise ValueError("Seuls les canaux Telegram et Discord sont autorisés.")
+    if not parsed.netloc or not parsed.path.strip("/"):
+        raise ValueError("L'URL de notification est incomplète.")

@@ -9,7 +9,11 @@ from src.subscriptions import (
     telegram_notification_url,
     validate_telegram_chat_id,
 )
-from src.subscriptions import SubscriptionError, _validate_supabase_url
+from src.subscriptions import (
+    SubscriptionError,
+    _validate_supabase_url,
+    discord_notification_url,
+)
 
 
 class _FakeTable:
@@ -23,6 +27,13 @@ class _FakeTable:
 
     def update(self, payload: dict[str, object]) -> "_FakeTable":
         self.updated = payload
+        return self
+
+    def delete(self) -> "_FakeTable":
+        self.deleted = True
+        return self
+
+    def lte(self, *_args: object) -> "_FakeTable":
         return self
 
     def eq(self, *_args: object) -> "_FakeTable":
@@ -59,6 +70,22 @@ def test_validate_supabase_url_removes_trailing_slash() -> None:
     assert _validate_supabase_url("https://example.supabase.co/") == "https://example.supabase.co"
 
 
+def test_validate_supabase_url_rejects_embedded_credentials() -> None:
+    with pytest.raises(SubscriptionError):
+        _validate_supabase_url("https://user:secret@example.supabase.co")
+
+
+def test_discord_notification_url_rejects_query_string() -> None:
+    with pytest.raises(SubscriptionError):
+        discord_notification_url("https://discord.com/api/webhooks/123/token?wait=true")
+
+
+def test_discord_notification_url_converts_valid_webhook() -> None:
+    assert discord_notification_url("https://discord.com/api/webhooks/123/token") == (
+        "discord://123/token"
+    )
+
+
 def test_create_subscription_sets_expiration_and_first_run() -> None:
     client = _FakeClient()
     started_at = datetime(2026, 9, 20, tzinfo=timezone.utc)
@@ -81,6 +108,25 @@ def test_create_subscription_sets_expiration_and_first_run() -> None:
     assert payload["expires_at"] == "2026-09-30T00:00:00+00:00"
 
 
+def test_create_discord_subscription_stores_webhook_without_chat_id() -> None:
+    client = _FakeClient()
+
+    create_subscription(
+        client,
+        latitude=48.8566,
+        longitude=2.3522,
+        radius_km=5,
+        fuel_type="Gazole",
+        channel="Discord",
+        discord_webhook_url="https://discord.com/api/webhooks/123/secret",
+    )
+
+    payload = client.tables["subscriptions"].inserted[0]
+    assert payload["channel"] == "Discord"
+    assert payload["telegram_chat_id"] is None
+    assert payload["discord_webhook_url"].endswith("/123/secret")
+
+
 def test_record_notification_deactivates_after_last_send() -> None:
     client = _FakeClient()
     sent_at = datetime(2026, 9, 20, tzinfo=timezone.utc)
@@ -99,6 +145,7 @@ def test_record_notification_deactivates_after_last_send() -> None:
         "next_run_at": "2026-09-21T00:00:00+00:00",
         "active": False,
     }
+    assert client.tables["subscriptions"].deleted is True
 
 
 def test_telegram_notification_url_contains_bot_and_chat_id() -> None:

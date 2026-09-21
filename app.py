@@ -21,7 +21,6 @@ from typing import Optional
 import folium
 import pandas as pd
 import streamlit as st
-from geopy.geocoders import Nominatim
 from streamlit_folium import st_folium
 
 from src.analyzer import (
@@ -31,13 +30,18 @@ from src.analyzer import (
     rank_stations,
 )
 from src.fetcher import FuelAPIError, fetch_stations
+from src.geocoding import GeocodingError, geocode_address
 from src.notifier import NotificationError, build_message, send_notification
+from src.security import validate_coordinates
 from src.subscriptions import (
     DEFAULT_DURATION_DAYS,
     MAX_DURATION_DAYS,
     SubscriptionError,
     create_subscription,
+    discord_notification_url,
     get_supabase_client,
+    SUPPORTED_CHANNELS,
+    telegram_notification_url,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -52,14 +56,6 @@ st.set_page_config(
 
 DEFAULT_LAT = 48.8566  # Paris
 DEFAULT_LON = 2.3522
-
-NOTIFICATION_TEMPLATES: dict[str, str] = {
-    "Telegram": "tgram://{bot_token}/{chat_id}",
-    "Discord": "discord://{webhook_id}/{webhook_token}",
-    "Slack": "slack://{token_a}/{token_b}/{token_c}",
-    "E-mail (SMTP)": "mailtos://{user}:{password}@{smtp_host}?to={destination_email}",
-}
-
 
 def _init_session_state() -> None:
     """Initialise les valeurs par défaut du ``st.session_state``."""
@@ -84,13 +80,10 @@ def _geocode_address(address: str) -> Optional[tuple[float, float]]:
         Un tuple ``(latitude, longitude)``, ou ``None`` si le géocodage échoue.
     """
     try:
-        geolocator = Nominatim(user_agent="fuel-price-alert-app")
-        location = geolocator.geocode(address, timeout=10)
-        if location:
-            return location.latitude, location.longitude
-    except Exception:  # noqa: BLE001 - le géocodage peut échouer de multiples façons
-        logger.exception("Échec du géocodage pour l'adresse: %s", address)
-    return None
+        return geocode_address(address)
+    except (GeocodingError, ValueError) as exc:
+        logger.warning("Échec de la recherche d'adresse: %s", exc)
+        return None
 
 
 def _render_sidebar() -> dict[str, object]:
@@ -107,12 +100,16 @@ def _render_sidebar() -> dict[str, object]:
         help="Saisissez une adresse pour centrer la carte automatiquement, "
         "ou cliquez directement sur la carte.",
     )
-    if st.sidebar.button("🔎 Localiser cette adresse") and address:
-        coords = _geocode_address(address)
+    if st.sidebar.button("🔎 Localiser cette adresse"):
+        if not address.strip():
+            st.sidebar.warning("Saisissez une adresse avant de lancer la recherche.")
+            coords = None
+        else:
+            coords = _geocode_address(address)
         if coords:
             st.session_state["map_lat"], st.session_state["map_lon"] = coords
             st.sidebar.success(f"Adresse localisée: {coords[0]:.5f}, {coords[1]:.5f}")
-        else:
+        elif address.strip():
             st.sidebar.error("Adresse introuvable, essayez une formulation différente.")
 
     fuel_type = st.sidebar.selectbox(
@@ -120,48 +117,10 @@ def _render_sidebar() -> dict[str, object]:
     )
     radius_km = st.sidebar.slider("📏 Rayon de recherche (km)", min_value=1, max_value=50, value=5)
 
-    st.sidebar.header("📢 Canal de notification")
-    channel = st.sidebar.selectbox("Type de canal", options=list(NOTIFICATION_TEMPLATES.keys()))
-
-    channel_values: dict[str, str] = {}
-    if channel == "Telegram":
-        channel_values["bot_token"] = st.sidebar.text_input("Bot Token", type="password")
-        channel_values["chat_id"] = st.sidebar.text_input("Chat ID")
-    elif channel == "Discord":
-        channel_values["webhook_id"] = st.sidebar.text_input("Webhook ID")
-        channel_values["webhook_token"] = st.sidebar.text_input("Webhook Token", type="password")
-    elif channel == "Slack":
-        channel_values["token_a"] = st.sidebar.text_input("Token A", type="password")
-        channel_values["token_b"] = st.sidebar.text_input("Token B", type="password")
-        channel_values["token_c"] = st.sidebar.text_input("Token C", type="password")
-    elif channel == "E-mail (SMTP)":
-        channel_values["user"] = st.sidebar.text_input("Utilisateur SMTP")
-        channel_values["password"] = st.sidebar.text_input("Mot de passe SMTP", type="password")
-        channel_values["smtp_host"] = st.sidebar.text_input("Hôte SMTP", placeholder="smtp.gmail.com")
-        channel_values["destination_email"] = st.sidebar.text_input("E-mail destinataire")
-
     return {
         "fuel_type": fuel_type,
         "radius_km": radius_km,
-        "channel": channel,
-        "channel_values": channel_values,
     }
-
-
-def _build_notification_url(channel: str, values: dict[str, str]) -> str:
-    """Construit l'URL Apprise à partir du canal choisi et des valeurs saisies.
-
-    Args:
-        channel: Nom du canal (clé de :data:`NOTIFICATION_TEMPLATES`).
-        values: Valeurs saisies par l'utilisateur pour ce canal.
-
-    Returns:
-        L'URL Apprise formatée. Peut contenir des placeholders vides si
-        l'utilisateur n'a pas encore rempli tous les champs.
-    """
-    template = NOTIFICATION_TEMPLATES[channel]
-    safe_values = {k: (v or f"<{k}>") for k, v in values.items()}
-    return template.format(**safe_values)
 
 
 def _get_setting(name: str) -> str:
@@ -178,7 +137,7 @@ def _render_subscription_form(
     longitude: float,
     fuel_type: str,
     radius_km: float,
-) -> None:
+) -> dict[str, str]:
     """Affiche le formulaire d'inscription aux alertes Telegram quotidiennes."""
     st.divider()
     st.subheader("🔔 Recevoir une alerte quotidienne")
@@ -194,14 +153,31 @@ def _render_subscription_form(
             "Les inscriptions sont momentanément indisponibles : configurez "
             "SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY dans les secrets Streamlit."
         )
-        return
+        return {"channel": "Telegram", "value": ""}
 
     with st.form("daily_subscription_form"):
-        chat_id = st.text_input(
-            "Chat ID Telegram",
-            placeholder="Ex: 123456789 ou -1001234567890",
-            help="Ouvrez ensuite votre bot Telegram et appuyez sur Démarrer.",
-        )
+        channel = st.selectbox("Canal de notification", options=list(SUPPORTED_CHANNELS))
+        if channel == "Telegram":
+            st.info(
+                "1. Ouvrez le bot Telegram indiqué par le propriétaire de l'application. "
+                "2. Appuyez sur Démarrer ou envoyez /start. "
+                "3. Envoyez votre Chat ID numérique ci-dessous."
+            )
+            channel_value = st.text_input(
+                "Chat ID Telegram",
+                placeholder="Ex: 123456789 ou -1001234567890",
+                help="Un groupe doit d'abord ajouter le bot et utiliser son identifiant -100...",
+            )
+        else:
+            st.info(
+                "Dans Discord, créez un salon, ouvrez Modifier le salon > Intégrations > "
+                "Webhooks, créez un webhook, puis copiez son URL complète ici."
+            )
+            channel_value = st.text_input(
+                "URL du webhook Discord",
+                placeholder="https://discord.com/api/webhooks/...",
+                type="password",
+            )
         duration_days = st.number_input(
             "Durée de l'abonnement (jours)",
             min_value=1,
@@ -209,34 +185,40 @@ def _render_subscription_form(
             value=DEFAULT_DURATION_DAYS,
             step=1,
         )
-        consent = st.checkbox("J'accepte de recevoir une notification quotidienne sur Telegram.")
+        consent = st.checkbox("J'accepte de recevoir une notification quotidienne sur ce canal.")
         submitted = st.form_submit_button("📲 M'inscrire aux alertes", type="primary")
 
     if not submitted:
-        return
+        return {"channel": channel, "value": channel_value}
     if not consent:
         st.error("Veuillez confirmer votre inscription aux notifications.")
-        return
+        return {"channel": channel, "value": channel_value}
 
     try:
         client = get_supabase_client(supabase_url, service_role_key)
-        create_subscription(
-            client,
-            latitude=latitude,
-            longitude=longitude,
-            radius_km=radius_km,
-            fuel_type=fuel_type,
-            telegram_chat_id=chat_id,
-            duration_days=int(duration_days),
-        )
+        create_args = {
+            "client": client,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_km": radius_km,
+            "fuel_type": fuel_type,
+            "duration_days": int(duration_days),
+            "channel": channel,
+        }
+        if channel == "Telegram":
+            create_args["telegram_chat_id"] = channel_value
+        else:
+            create_args["discord_webhook_url"] = channel_value
+        create_subscription(**create_args)
     except (SubscriptionError, ValueError) as exc:
         st.error(f"Inscription impossible : {exc}")
-        return
+        return {"channel": channel, "value": channel_value}
 
     st.success(
         f"Inscription confirmée pour {int(duration_days)} jours. "
         "Vous recevrez le prochain message lors du prochain passage quotidien."
     )
+    return {"channel": channel, "value": channel_value}
 
 
 def _render_map(center_lat: float, center_lon: float, results: Optional[list[StationResult]]) -> dict:
@@ -362,8 +344,15 @@ def main() -> None:
             st.session_state["map_lat"], st.session_state["map_lon"], st.session_state["results"]
         )
         if map_state and map_state.get("last_clicked"):
-            st.session_state["map_lat"] = map_state["last_clicked"]["lat"]
-            st.session_state["map_lon"] = map_state["last_clicked"]["lng"]
+            try:
+                clicked_lat = float(map_state["last_clicked"]["lat"])
+                clicked_lon = float(map_state["last_clicked"]["lng"])
+                validate_coordinates(clicked_lat, clicked_lon)
+            except (KeyError, TypeError, ValueError):
+                st.warning("Le point sélectionné sur la carte est invalide.")
+            else:
+                st.session_state["map_lat"] = clicked_lat
+                st.session_state["map_lon"] = clicked_lon
 
     with col_side:
         st.subheader("📌 Point sélectionné")
@@ -373,7 +362,7 @@ def main() -> None:
 
         run_clicked = st.button("🚀 Lancer la recherche maintenant", type="primary", use_container_width=True)
 
-    _render_subscription_form(
+    subscription_config = _render_subscription_form(
         latitude=float(st.session_state["map_lat"]),
         longitude=float(st.session_state["map_lon"]),
         fuel_type=str(params["fuel_type"]),
@@ -423,7 +412,12 @@ def main() -> None:
             st.markdown(f"**{title}**")
             st.markdown(body)
 
-        notification_url = _build_notification_url(params["channel"], params["channel_values"])
+        if subscription_config["channel"] == "Telegram":
+            notification_url = telegram_notification_url(
+                _get_setting("TELEGRAM_BOT_TOKEN"), subscription_config["value"]
+            )
+        else:
+            notification_url = discord_notification_url(subscription_config["value"])
         if st.button("🧪 Tester l'envoi de la notification maintenant"):
             try:
                 send_notification(results, [notification_url])

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 CHAT_ID_PATTERN = re.compile(r"^-?\d{1,30}$")
 DEFAULT_DURATION_DAYS = 10
 MAX_DURATION_DAYS = 30
+SUPPORTED_CHANNELS = ("Telegram", "Discord")
 
 
 class SubscriptionError(Exception):
@@ -20,7 +21,7 @@ class SubscriptionError(Exception):
 def _validate_supabase_url(url: str) -> str:
     """Valide l'URL du projet Supabase, sans suffixe d'API REST."""
     parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc:
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
         raise SubscriptionError(
             "SUPABASE_URL doit être l'URL HTTPS du projet, par exemple "
             "https://xxxx.supabase.co."
@@ -77,7 +78,9 @@ def create_subscription(
     longitude: float,
     radius_km: float,
     fuel_type: str,
-    telegram_chat_id: str,
+    telegram_chat_id: str | None = None,
+    channel: str = "Telegram",
+    discord_webhook_url: str | None = None,
     duration_days: int = DEFAULT_DURATION_DAYS,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -90,7 +93,20 @@ def create_subscription(
     if fuel_type not in SUPPORTED_FUEL_TYPES:
         raise ValueError(f"Carburant non supporté: {fuel_type}")
     validate_duration_days(duration_days)
-    normalized_chat_id = validate_telegram_chat_id(telegram_chat_id)
+    if channel not in SUPPORTED_CHANNELS:
+        raise ValueError(f"Canal non supporté: {channel}")
+    normalized_chat_id = (
+        validate_telegram_chat_id(telegram_chat_id)
+        if channel == "Telegram" and telegram_chat_id
+        else None
+    )
+    normalized_webhook = (discord_webhook_url or "").strip() or None
+    if channel == "Telegram" and not normalized_chat_id:
+        raise ValueError("Le Chat ID Telegram est obligatoire.")
+    if channel == "Discord" and not normalized_webhook:
+        raise ValueError("L'URL du webhook Discord est obligatoire.")
+    if channel == "Discord":
+        discord_notification_url(normalized_webhook)
 
     started_at = now or datetime.now(timezone.utc)
     expires_at = started_at + timedelta(days=duration_days)
@@ -99,7 +115,9 @@ def create_subscription(
         "longitude": longitude,
         "radius_km": radius_km,
         "fuel_type": fuel_type,
+        "channel": channel,
         "telegram_chat_id": normalized_chat_id,
+        "discord_webhook_url": normalized_webhook,
         "duration_days": duration_days,
         "expires_at": expires_at.isoformat(),
         "next_run_at": started_at.isoformat(),
@@ -137,6 +155,17 @@ def notification_was_sent_today(client: Any, subscription_id: str, today: str) -
     return bool(response.data)
 
 
+def delete_subscription(client: Any, subscription_id: str) -> None:
+    """Supprime un abonnement terminé; ses journaux sont supprimés en cascade."""
+    client.table("subscriptions").delete().eq("id", subscription_id).execute()
+
+
+def delete_expired_subscriptions(client: Any, now: datetime | None = None) -> None:
+    """Supprime les abonnements dont la durée est dépassée, même sans nouvel envoi."""
+    current = now or datetime.now(timezone.utc)
+    client.table("subscriptions").delete().lte("expires_at", current.isoformat()).execute()
+
+
 def record_notification(
     client: Any,
     *,
@@ -155,6 +184,8 @@ def record_notification(
         "active": next_count < duration_days,
     }
     client.table("subscriptions").update(update).eq("id", subscription_id).execute()
+    if not update["active"]:
+        delete_subscription(client, subscription_id)
 
 
 def log_notification(client: Any, subscription_id: str, sent_at: datetime | None = None) -> None:
@@ -174,3 +205,22 @@ def telegram_notification_url(bot_token: str, chat_id: str) -> str:
     if not bot_token.strip():
         raise SubscriptionError("TELEGRAM_BOT_TOKEN doit être configuré.")
     return f"tgram://{bot_token.strip()}/{validate_telegram_chat_id(chat_id)}"
+
+
+def discord_notification_url(webhook_url: str) -> str:
+    """Convertit une URL de webhook Discord en URL Apprise."""
+    parsed = urlparse(webhook_url.strip())
+    prefix = "/api/webhooks/"
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc not in {"discord.com", "discordapp.com"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SubscriptionError("L'URL du webhook Discord doit venir de discord.com.")
+    if not parsed.path.startswith(prefix):
+        raise SubscriptionError("L'URL du webhook Discord est invalide.")
+    parts = parsed.path[len(prefix):].strip("/").split("/")
+    if len(parts) != 2 or not all(parts):
+        raise SubscriptionError("L'URL du webhook Discord est incomplète.")
+    return f"discord://{parts[0]}/{parts[1]}"

@@ -146,10 +146,41 @@ Dans votre dépôt : **Settings → Secrets and variables → Actions → New re
 | `FUEL_TYPE` | `Gazole` | `E10`, `SP95`, `SP98`, `Gazole`, `E85` ou `GPLc` |
 | `NOTIFICATION_URLS` | `tgram://123:ABC/456` | Une ou plusieurs URLs [Apprise](https://github.com/caronc/apprise), séparées par des virgules |
 
-Le workflow utilise les trois premiers secrets pour traiter les abonnements
-Telegram stockés dans Supabase. Les paramètres de recherche et
+Le workflow utilise les secrets Supabase pour traiter les abonnements stockés
+dans Supabase. `TELEGRAM_BOT_TOKEN` est requis si un abonnement Telegram est
+actif. Les paramètres de recherche et
 `NOTIFICATION_URLS` servent à l'exécution CLI directe lorsque le mode
 abonnements n'est pas activé.
+
+### Protocole d'inscription aux alertes
+
+Le choix du canal se fait dans le formulaire principal de l'application. Un
+abonnement dure de 1 à 30 jours et les données d'abonnement sont supprimées à
+la fin de la durée.
+
+#### Telegram
+
+1. Ouvrez le bot Telegram utilisé par l'application.
+2. Appuyez sur **Démarrer** ou envoyez `/start` avant de vous inscrire.
+3. Récupérez votre identifiant numérique avec `@userinfobot`.
+4. Choisissez **Telegram**, saisissez cet identifiant dans **Chat ID Telegram**,
+	acceptez la notification, puis validez.
+5. Pour un groupe, ajoutez d'abord le bot au groupe et utilisez l'identifiant
+	du groupe, généralement au format `-100...`.
+
+Le bot doit être celui correspondant au secret `TELEGRAM_BOT_TOKEN`. Un Chat ID
+provenant d'un autre bot provoque l'erreur `chat not found`.
+
+#### Discord
+
+1. Ouvrez le serveur Discord et le salon qui doit recevoir les alertes.
+2. Ouvrez **Modifier le salon → Intégrations → Webhooks**.
+3. Créez un webhook, copiez son URL complète et ne la partagez pas.
+4. Choisissez **Discord**, collez l'URL dans **URL du webhook Discord**,
+	acceptez la notification, puis validez.
+
+L'URL doit commencer par `https://discord.com/api/webhooks/`. Elle est
+supprimée avec l'abonnement à son expiration.
 
 > 💡 L'onglet **"Export de la configuration"** de l'interface Streamlit génère directement ces valeurs pour vous.
 

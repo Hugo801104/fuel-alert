@@ -20,3 +20,9 @@ def test_parse_prix_field_normalizes_supported_shapes() -> None:
 
 def test_record_to_station_ignores_records_without_coordinates() -> None:
     assert _record_to_station({"id": "without-location"}) is None
+
+
+def test_extract_coordinates_ignores_malformed_coordinates() -> None:
+    assert _record_to_station(
+        {"id": "bad-location", "geom": {"coordinates": ["not-a-number", 48.0]}}
+    ) is None

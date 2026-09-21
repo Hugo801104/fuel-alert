@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 import requests
 
+from src.security import validate_coordinates, validate_radius
+
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = (
@@ -109,18 +111,35 @@ def _extract_coordinates(record: dict[str, Any]) -> tuple[Optional[float], Optio
             lat = geo.get("lat")
             lon = geo.get("lon")
             if lat is not None and lon is not None:
-                return float(lat), float(lon)
+                try:
+                    coordinates = float(lat), float(lon)
+                    validate_coordinates(*coordinates)
+                    return coordinates
+                except (TypeError, ValueError):
+                    continue
             coords = geo.get("coordinates")
             if isinstance(coords, (list, tuple)) and len(coords) == 2:
-                return float(coords[1]), float(coords[0])
+                try:
+                    coordinates = float(coords[1]), float(coords[0])
+                    validate_coordinates(*coordinates)
+                    return coordinates
+                except (TypeError, ValueError):
+                    continue
         if isinstance(geo, (list, tuple)) and len(geo) == 2:
-            return float(geo[0]), float(geo[1])
+            try:
+                coordinates = float(geo[0]), float(geo[1])
+                validate_coordinates(*coordinates)
+                return coordinates
+            except (TypeError, ValueError):
+                continue
 
     lat_raw = record.get("latitude")
     lon_raw = record.get("longitude")
     if lat_raw is not None and lon_raw is not None:
         try:
-            return float(lat_raw), float(lon_raw)
+            coordinates = float(lat_raw), float(lon_raw)
+            validate_coordinates(*coordinates)
+            return coordinates
         except (TypeError, ValueError):
             pass
     return None, None
@@ -189,8 +208,14 @@ def fetch_stations(
         FuelAPIError: Si l'API est injoignable après plusieurs tentatives
             ou renvoie une réponse invalide.
     """
-    if radius_km <= 0:
-        raise ValueError("radius_km doit être strictement positif")
+    validate_coordinates(latitude, longitude)
+    validate_radius(radius_km)
+    if not 1 <= page_size <= 100:
+        raise ValueError("page_size doit être compris entre 1 et 100")
+    if max_pages < 1:
+        raise ValueError("max_pages doit être positif")
+    if timeout <= 0:
+        raise ValueError("timeout doit être positif")
 
     http = session or requests.Session()
     stations: list[RawStation] = []

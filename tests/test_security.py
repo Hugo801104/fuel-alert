@@ -1,6 +1,11 @@
 import pytest
 
-from src.security import validate_coordinates, validate_radius, validate_smtp_url
+from src.security import (
+    validate_coordinates,
+    validate_notification_url,
+    validate_radius,
+    validate_smtp_url,
+)
 
 
 @pytest.mark.parametrize(
@@ -29,3 +34,14 @@ def test_validate_radius_accepts_maximum() -> None:
 def test_validate_smtp_url_rejects_local_targets() -> None:
     with pytest.raises(ValueError):
         validate_smtp_url("mailtos://user:password@127.0.0.1?to=user@example.com")
+
+
+@pytest.mark.parametrize("url", ["http://example.com/hook", "file:///etc/passwd", "discord://"])
+def test_validate_notification_url_allows_only_complete_supported_channels(url: str) -> None:
+    with pytest.raises(ValueError):
+        validate_notification_url(url)
+
+
+def test_validate_notification_url_accepts_apprise_channels() -> None:
+    validate_notification_url("tgram://123:token/456")
+    validate_notification_url("discord://123/token")

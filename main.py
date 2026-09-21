@@ -43,6 +43,8 @@ from src.notifier import NotificationError, send_notification
 from src.security import validate_coordinates, validate_radius
 from src.subscriptions import (
     SubscriptionError,
+    delete_expired_subscriptions,
+    discord_notification_url,
     get_supabase_client,
     list_due_subscriptions,
     log_notification,
@@ -188,13 +190,11 @@ def run_subscriptions() -> int:
         return 1
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    if not bot_token:
-        logger.error("La variable TELEGRAM_BOT_TOKEN est obligatoire.")
-        return 1
 
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
     try:
+        delete_expired_subscriptions(client, now)
         subscriptions = list_due_subscriptions(client, now)
     except Exception:  # noqa: BLE001 - les erreurs du client Supabase sont externes
         logger.exception("Impossible de charger les abonnements Supabase.")
@@ -225,11 +225,17 @@ def run_subscriptions() -> int:
                 logger.warning("Aucun résultat pour l'abonnement %s.", subscription_id)
                 continue
 
-            notification_url = telegram_notification_url(
-                bot_token, str(subscription["telegram_chat_id"])
-            )
+            if subscription.get("channel", "Telegram") == "Discord":
+                webhook_url = str(subscription.get("discord_webhook_url", ""))
+                if not webhook_url:
+                    raise SubscriptionError("Webhook Discord absent pour cet abonnement.")
+                notification_url = discord_notification_url(webhook_url)
+            else:
+                notification_url = telegram_notification_url(
+                    bot_token, str(subscription["telegram_chat_id"])
+                )
             if not send_notification(results, [notification_url]):
-                raise NotificationError("Telegram n'a pas accepté la notification.")
+                raise NotificationError("Le canal de notification n'a pas accepté la notification.")
 
             sent_at = datetime.now(timezone.utc)
             log_notification(client, subscription_id, sent_at)
