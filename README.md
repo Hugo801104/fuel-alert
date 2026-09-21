@@ -107,6 +107,8 @@ dans Supabase et traité chaque matin par GitHub Actions.
 1. Créez un projet sur [Supabase](https://supabase.com/).
 2. Ouvrez **SQL Editor** et exécutez le contenu de `supabase/schema.sql`.
 3. Récupérez **Project URL** dans *Project Settings → Data API*.
+	Utilisez uniquement une URL comme `https://xxxx.supabase.co`, sans ajouter
+	`/rest/v1` : le client Python ajoute lui-même ce chemin.
 4. Récupérez la clé **service_role** dans *Project Settings → API*.
 5. Créez un bot avec [@BotFather](https://t.me/BotFather) et conservez son token.
 6. Configurez ces secrets dans Streamlit Cloud (*App settings → Secrets*) :

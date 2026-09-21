@@ -9,6 +9,7 @@ from src.subscriptions import (
     telegram_notification_url,
     validate_telegram_chat_id,
 )
+from src.subscriptions import SubscriptionError, _validate_supabase_url
 
 
 class _FakeTable:
@@ -47,6 +48,15 @@ def test_validate_telegram_chat_id_accepts_private_and_group_ids() -> None:
 def test_validate_telegram_chat_id_rejects_non_numeric_values() -> None:
     with pytest.raises(ValueError):
         validate_telegram_chat_id("@fuel_alert")
+
+
+def test_validate_supabase_url_rejects_rest_api_path() -> None:
+    with pytest.raises(SubscriptionError, match="retirez /rest/v1"):
+        _validate_supabase_url("https://example.supabase.co/rest/v1")
+
+
+def test_validate_supabase_url_removes_trailing_slash() -> None:
+    assert _validate_supabase_url("https://example.supabase.co/") == "https://example.supabase.co"
 
 
 def test_create_subscription_sets_expiration_and_first_run() -> None:

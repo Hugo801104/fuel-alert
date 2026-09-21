@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 CHAT_ID_PATTERN = re.compile(r"^-?\d{1,30}$")
 DEFAULT_DURATION_DAYS = 10
@@ -14,6 +15,24 @@ MAX_DURATION_DAYS = 30
 
 class SubscriptionError(Exception):
     """Levée lorsqu'un abonnement ne peut pas être créé ou traité."""
+
+
+def _validate_supabase_url(url: str) -> str:
+    """Valide l'URL du projet Supabase, sans suffixe d'API REST."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise SubscriptionError(
+            "SUPABASE_URL doit être l'URL HTTPS du projet, par exemple "
+            "https://xxxx.supabase.co."
+        )
+    if parsed.path.rstrip("/") == "/rest/v1" or parsed.path not in {"", "/"}:
+        raise SubscriptionError(
+            "SUPABASE_URL doit contenir uniquement l'URL du projet "
+            "(retirez /rest/v1 et tout autre chemin)."
+        )
+    if parsed.query or parsed.fragment:
+        raise SubscriptionError("SUPABASE_URL ne doit pas contenir de paramètres ni de fragment.")
+    return url.rstrip("/")
 
 
 def validate_telegram_chat_id(chat_id: str) -> str:
@@ -39,6 +58,7 @@ def get_supabase_client(url: str | None = None, key: str | None = None) -> Any:
         raise SubscriptionError(
             "SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY doivent être configurées."
         )
+    supabase_url = _validate_supabase_url(supabase_url)
 
     try:
         from supabase import create_client
