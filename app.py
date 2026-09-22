@@ -313,7 +313,7 @@ def _render_env_export(
     lon: float,
     fuel_type: str,
     radius_km: int,
-    notification_url: str,
+    notification_url: str | None,
 ) -> None:
     """Affiche la section d'export de configuration (.env / GitHub Secrets).
 
@@ -438,13 +438,18 @@ def main() -> None:
             st.markdown(f"**{title}**")
             st.markdown(body)
 
-        if subscription_config["channel"] == "Telegram":
-            notification_url = telegram_notification_url(
-                _get_setting("TELEGRAM_BOT_TOKEN"), subscription_config["value"]
-            )
-        else:
-            notification_url = discord_notification_url(subscription_config["value"])
-        if st.button("🧪 Tester l'envoi de la notification maintenant"):
+        notification_url = None
+        try:
+            if subscription_config["channel"] == "Telegram":
+                notification_url = telegram_notification_url(
+                    _get_setting("TELEGRAM_BOT_TOKEN"), subscription_config["value"]
+                )
+            else:
+                notification_url = discord_notification_url(subscription_config["value"])
+        except (SubscriptionError, ValueError) as exc:
+            st.info(f"Test de notification indisponible : {exc}")
+
+        if notification_url and st.button("🧪 Tester l'envoi de la notification maintenant"):
             if not _allow_action(
                 "notification_test_attempts",
                 TEST_NOTIFICATION_LIMIT,
